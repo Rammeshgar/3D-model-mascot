@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Mascot Lip-Sync Test</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #2c3e50; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+        }
+        canvas { display: block; }
+        /* Notice I added pointer-events: none to the UI container, 
+           and pointer-events: auto to the button. 
+           This allows you to click and drag the camera even if you click near the text! */
+        #ui { 
+            position: absolute; 
+            bottom: 20px; 
+            text-align: center; 
+            color: white; 
+            font-family: sans-serif; 
+            background: rgba(0,0,0,0.5); 
+            padding: 20px; 
+            border-radius: 10px;
+            z-index: 10;
+            pointer-events: none; 
+        }
+        button { 
+            pointer-events: auto;
+            padding: 10px 20px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            background: #27ae60; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+        }
+        button:hover { background: #2ecc71; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <h2>3D Mascot Test (Real Audio Sync)</h2>
+    <audio id="myAudio" src="voice.wav"></audio>
+    <button id="playBtn">Play Audio & Talk</button>
+</div>
+
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    // --- IMPORT ORBIT CONTROLS ---
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // 1. SETUP SCENE
+    const scene = new THREE.Scene();
+    
+    // --- CAMERA ---
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.45, 2.0); 
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.body.appendChild(renderer.domElement);
+
+    // --- ORBIT CONTROLS SETUP ---
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1.45, 0); // Point the camera orbit center at his face
+    controls.enableDamping = true;   // Adds smooth gliding weight to the camera
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 1;        // Prevents zooming inside his head
+    controls.maxDistance = 5;        // Prevents zooming out too far
+    controls.maxPolarAngle = Math.PI / 1.5; // Prevents the camera from going under the floor
+
+    // --- LIGHTING ---
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5)); 
+    const frontLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    frontLight.position.set(0, 1.5, 3);
+    scene.add(frontLight);
+    const sideLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    sideLight.position.set(3, 2, 1);
+    scene.add(sideLight);
+
+    // --- VARIABLES ---
+    let mixer, headMesh;
+    let headBone, neckBone; 
+    const clock = new THREE.Clock();
+    const audio = document.getElementById('myAudio');
+
+    // --- MOUSE TRACKING ---
+    let mouseX = 0;
+    let mouseY = 0;
+    let targetMouseX = 0;
+    let targetMouseY = 0;
+
+    window.addEventListener('mousemove', (event) => {
+        targetMouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        targetMouseY = -(event.clientY / window.innerHeight) * 2 + 1 - 0.8;
+    });
+
+    const visemeMap = { 0: null, 1: "viseme_aa", 2: "viseme_O", 3: "viseme_E", 4: "viseme_FF" };
+    const rhubarbToVisemeId = { "X": 0, "A": 0, "C": 1, "D": 1, "E": 2, "F": 2, "B": 3, "H": 3, "G": 4 };
+
+    // YOUR VISEME DATA
+    const mouthCues = [
+        { "start": 0.00, "end": 0.06, "value": "X" }, { "start": 0.06, "end": 0.12, "value": "C" }, { "start": 0.12, "end": 0.38, "value": "E" }, { "start": 0.38, "end": 0.45, "value": "F" }, { "start": 0.45, "end": 0.80, "value": "X" }, { "start": 0.80, "end": 1.09, "value": "B" }, { "start": 1.09, "end": 1.16, "value": "C" }, { "start": 1.16, "end": 1.23, "value": "G" }, { "start": 1.23, "end": 1.37, "value": "F" }, { "start": 1.37, "end": 1.51, "value": "G" }, { "start": 1.51, "end": 1.58, "value": "E" }, { "start": 1.58, "end": 1.79, "value": "B" }, { "start": 1.79, "end": 1.86, "value": "C" }, { "start": 1.86, "end": 2.00, "value": "B" }, { "start": 2.00, "end": 2.08, "value": "A" }, { "start": 2.08, "end": 2.37, "value": "B" }, { "start": 2.37, "end": 2.58, "value": "C" }, { "start": 2.58, "end": 2.79, "value": "B" }, { "start": 2.79, "end": 2.82, "value": "A" }, { "start": 2.82, "end": 2.90, "value": "B" }, { "start": 2.90, "end": 2.98, "value": "A" }, { "start": 2.98, "end": 3.11, "value": "C" }, { "start": 3.11, "end": 3.18, "value": "B" }, { "start": 3.18, "end": 3.39, "value": "D" }, { "start": 3.39, "end": 3.53, "value": "B" }, { "start": 3.53, "end": 4.08, "value": "X" }, { "start": 4.08, "end": 4.23, "value": "B" }, { "start": 4.23, "end": 4.37, "value": "D" }, { "start": 4.37, "end": 4.65, "value": "B" }, { "start": 4.65, "end": 4.93, "value": "E" }, { "start": 4.93, "end": 5.21, "value": "F" }, { "start": 5.21, "end": 5.42, "value": "B" }, { "start": 5.42, "end": 5.63, "value": "E" }, { "start": 5.63, "end": 5.87, "value": "F" }, { "start": 5.87, "end": 5.96, "value": "B" }, { "start": 5.96, "end": 6.03, "value": "F" }, { "start": 6.03, "end": 6.11, "value": "A" }, { "start": 6.11, "end": 6.24, "value": "C" }, { "start": 6.24, "end": 6.45, "value": "B" }, { "start": 6.45, "end": 6.53, "value": "A" }, { "start": 6.53, "end": 6.66, "value": "C" }, { "start": 6.66, "end": 6.80, "value": "B" }, { "start": 6.80, "end": 6.87, "value": "C" }, { "start": 6.87, "end": 6.95, "value": "A" }, { "start": 6.95, "end": 7.04, "value": "B" }, { "start": 7.04, "end": 7.11, "value": "E" }, { "start": 7.11, "end": 7.60, "value": "B" }, { "start": 7.60, "end": 7.74, "value": "C" }, { "start": 7.74, "end": 7.88, "value": "B" }, { "start": 7.88, "end": 8.58, "value": "X" }, { "start": 8.58, "end": 8.77, "value": "C" }, { "start": 8.77, "end": 8.84, "value": "E" }, { "start": 8.84, "end": 8.91, "value": "B" }, { "start": 8.91, "end": 8.99, "value": "A" }, { "start": 8.99, "end": 9.05, "value": "C" }, { "start": 9.05, "end": 9.24, "value": "B" }, { "start": 9.24, "end": 9.45, "value": "C" }, { "start": 9.45, "end": 9.59, "value": "H" }, { "start": 9.59, "end": 9.66, "value": "B" }, { "start": 9.66, "end": 9.74, "value": "A" }, { "start": 9.74, "end": 9.82, "value": "E" }, { "start": 9.82, "end": 9.89, "value": "B" }, { "start": 9.89, "end": 10.03, "value": "C" }, { "start": 10.03, "end": 10.38, "value": "B" }, { "start": 10.38, "end": 10.58, "value": "X" }, { "start": 10.58, "end": 10.92, "value": "B" }, { "start": 10.92, "end": 11.00, "value": "A" }, { "start": 11.00, "end": 11.53, "value": "B" }, { "start": 11.53, "end": 11.72, "value": "D" }, { "start": 11.72, "end": 11.77, "value": "C" }, { "start": 11.77, "end": 12.02, "value": "B" }, { "start": 12.02, "end": 12.09, "value": "H" }, { "start": 12.09, "end": 12.44, "value": "B" }, { "start": 12.44, "end": 13.23, "value": "X" }, { "start": 13.23, "end": 13.29, "value": "C" }, { "start": 13.29, "end": 13.35, "value": "B" }, { "start": 13.35, "end": 13.56, "value": "C" }, { "start": 13.56, "end": 13.70, "value": "E" }, { "start": 13.70, "end": 13.77, "value": "B" }, { "start": 13.77, "end": 13.85, "value": "A" }, { "start": 13.85, "end": 14.00, "value": "B" }, { "start": 14.00, "end": 14.14, "value": "E" }, { "start": 14.14, "end": 14.28, "value": "B" }, { "start": 14.28, "end": 14.49, "value": "C" }, { "start": 14.49, "end": 14.56, "value": "E" }, { "start": 14.56, "end": 14.70, "value": "C" }, { "start": 14.70, "end": 14.92, "value": "X" }, { "start": 14.92, "end": 15.49, "value": "B" }, { "start": 15.49, "end": 15.70, "value": "F" }, { "start": 15.70, "end": 15.77, "value": "E" }, { "start": 15.77, "end": 15.91, "value": "B" }, { "start": 15.91, "end": 16.05, "value": "A" }, { "start": 16.05, "end": 16.46, "value": "B" }, { "start": 16.46, "end": 16.53, "value": "G" }, { "start": 16.53, "end": 16.77, "value": "X" }, { "start": 16.77, "end": 16.89, "value": "B" }, { "start": 16.89, "end": 17.17, "value": "C" }, { "start": 17.17, "end": 17.31, "value": "B" }, { "start": 17.31, "end": 17.38, "value": "C" }, { "start": 17.38, "end": 17.52, "value": "B" }, { "start": 17.52, "end": 17.61, "value": "A" }, { "start": 17.61, "end": 17.77, "value": "F" }, { "start": 17.77, "end": 17.91, "value": "B" }, { "start": 17.91, "end": 17.98, "value": "C" }, { "start": 17.98, "end": 18.26, "value": "B" }, { "start": 18.26, "end": 18.33, "value": "C" }, { "start": 18.33, "end": 18.47, "value": "B" }, { "start": 18.47, "end": 19.19, "value": "X" }, { "start": 19.19, "end": 19.26, "value": "H" }, { "start": 19.26, "end": 19.47, "value": "B" }, { "start": 19.47, "end": 19.68, "value": "C" }, { "start": 19.68, "end": 19.75, "value": "B" }, { "start": 19.75, "end": 19.89, "value": "H" }, { "start": 19.89, "end": 20.03, "value": "C" }, { "start": 20.03, "end": 20.17, "value": "B" }, { "start": 20.17, "end": 20.24, "value": "F" }, { "start": 20.24, "end": 20.31, "value": "B" }, { "start": 20.31, "end": 20.45, "value": "G" }, { "start": 20.45, "end": 20.52, "value": "C" }, { "start": 20.52, "end": 20.73, "value": "E" }, { "start": 20.73, "end": 20.87, "value": "B" }, { "start": 20.87, "end": 21.43, "value": "X" }, { "start": 21.43, "end": 21.63, "value": "C" }, { "start": 21.63, "end": 21.91, "value": "B" }, { "start": 21.91, "end": 22.14, "value": "X" }, { "start": 22.14, "end": 22.40, "value": "B" }, { "start": 22.40, "end": 22.54, "value": "C" }, { "start": 22.54, "end": 22.88, "value": "B" }, { "start": 22.88, "end": 23.12, "value": "D" }, { "start": 23.12, "end": 23.18, "value": "C" }, { "start": 23.18, "end": 23.71, "value": "B" }, { "start": 23.71, "end": 23.99, "value": "E" }, { "start": 23.99, "end": 24.13, "value": "F" }, { "start": 24.13, "end": 24.50, "value": "X" }, { "start": 24.50, "end": 24.99, "value": "F" }, { "start": 24.99, "end": 25.81, "value": "X" }, { "start": 25.81, "end": 26.17, "value": "C" }, { "start": 26.17, "end": 26.36, "value": "D" }, { "start": 26.36, "end": 26.41, "value": "C" }, { "start": 26.41, "end": 26.87, "value": "B" }, { "start": 26.87, "end": 27.48, "value": "X" }, { "start": 27.48, "end": 28.08, "value": "B" }, { "start": 28.08, "end": 28.20, "value": "A" }, { "start": 28.20, "end": 29.03, "value": "B" }, { "start": 29.03, "end": 29.23, "value": "C" }, { "start": 29.23, "end": 29.44, "value": "G" }, { "start": 29.44, "end": 29.78, "value": "X" }, { "start": 29.78, "end": 29.84, "value": "B" }, { "start": 29.84, "end": 30.04, "value": "C" }, { "start": 30.04, "end": 30.24, "value": "A" }, { "start": 30.24, "end": 30.64, "value": "X" }, { "start": 30.64, "end": 30.84, "value": "C" }, { "start": 30.84, "end": 31.37, "value": "B" }, { "start": 31.37, "end": 31.96, "value": "F" }, { "start": 31.96, "end": 32.42, "value": "X" }, { "start": 32.42, "end": 32.60, "value": "C" }, { "start": 32.60, "end": 32.74, "value": "B" }, { "start": 32.74, "end": 33.21, "value": "X" }, { "start": 33.21, "end": 33.27, "value": "C" }, { "start": 33.27, "end": 33.46, "value": "E" }, { "start": 33.46, "end": 33.67, "value": "F" }, { "start": 33.67, "end": 34.04, "value": "X" }, { "start": 34.04, "end": 34.18, "value": "E" }, { "start": 34.18, "end": 34.25, "value": "F" }, { "start": 34.25, "end": 34.53, "value": "E" }, { "start": 34.53, "end": 35.23, "value": "X" }, { "start": 35.23, "end": 35.42, "value": "B" }, { "start": 35.42, "end": 35.77, "value": "C" }, { "start": 35.77, "end": 36.05, "value": "B" }, { "start": 36.05, "end": 36.12, "value": "C" }, { "start": 36.12, "end": 36.19, "value": "B" }, { "start": 36.19, "end": 36.33, "value": "C" }, { "start": 36.33, "end": 36.40, "value": "B" }, { "start": 36.40, "end": 36.47, "value": "G" }, { "start": 36.47, "end": 36.54, "value": "E" }, { "start": 36.54, "end": 36.68, "value": "G" }, { "start": 36.68, "end": 36.82, "value": "F" }, { "start": 36.82, "end": 36.89, "value": "B" }, { "start": 36.89, "end": 36.97, "value": "A" }, { "start": 36.97, "end": 37.04, "value": "E" }, { "start": 37.04, "end": 37.18, "value": "F" }, { "start": 37.18, "end": 37.32, "value": "B" }, { "start": 37.32, "end": 38.00, "value": "X" }, { "start": 38.00, "end": 38.13, "value": "B" }, { "start": 38.13, "end": 38.20, "value": "F" }, { "start": 38.20, "end": 38.34, "value": "B" }, { "start": 38.34, "end": 38.48, "value": "A" }, { "start": 38.48, "end": 38.55, "value": "B" }, { "start": 38.55, "end": 38.69, "value": "C" }, { "start": 38.69, "end": 38.83, "value": "G" }, { "start": 38.83, "end": 38.97, "value": "D" }, { "start": 38.97, "end": 39.04, "value": "C" }, { "start": 39.04, "end": 39.32, "value": "B" }, { "start": 39.32, "end": 39.39, "value": "C" }, { "start": 39.39, "end": 39.47, "value": "A" }, { "start": 39.47, "end": 39.52, "value": "B" }, { "start": 39.52, "end": 39.57, "value": "E" }, { "start": 39.57, "end": 39.64, "value": "F" }, { "start": 39.64, "end": 39.71, "value": "E" }, { "start": 39.71, "end": 39.78, "value": "B" }, { "start": 39.78, "end": 39.85, "value": "C" }, { "start": 39.85, "end": 39.99, "value": "H" }, { "start": 39.99, "end": 40.20, "value": "B" }, { "start": 40.20, "end": 40.48, "value": "E" }, { "start": 40.48, "end": 40.62, "value": "C" }, { "start": 40.62, "end": 40.79, "value": "B" }, { "start": 40.79, "end": 40.84, "value": "F" }, { "start": 40.84, "end": 40.96, "value": "B" }, { "start": 40.96, "end": 41.03, "value": "C" }, { "start": 41.03, "end": 41.10, "value": "F" }, { "start": 41.10, "end": 41.38, "value": "B" }, { "start": 41.38, "end": 41.52, "value": "F" }, { "start": 41.52, "end": 41.59, "value": "B" }, { "start": 41.59, "end": 41.67, "value": "A" }, { "start": 41.67, "end": 41.81, "value": "E" }, { "start": 41.81, "end": 41.95, "value": "B" }, { "start": 41.95, "end": 42.09, "value": "E" }, { "start": 42.09, "end": 42.44, "value": "B" }, { "start": 42.44, "end": 43.20, "value": "X" }, { "start": 43.20, "end": 43.32, "value": "G" }, { "start": 43.32, "end": 43.88, "value": "B" }, { "start": 43.88, "end": 43.95, "value": "C" }, { "start": 43.95, "end": 44.09, "value": "H" }, { "start": 44.09, "end": 44.23, "value": "C" }, { "start": 44.23, "end": 44.37, "value": "B" }, { "start": 44.37, "end": 44.44, "value": "F" }, { "start": 44.44, "end": 44.51, "value": "B" }, { "start": 44.51, "end": 44.58, "value": "C" }, { "start": 44.58, "end": 44.65, "value": "G" }, { "start": 44.65, "end": 44.93, "value": "B" }, { "start": 44.93, "end": 45.28, "value": "C" }, { "start": 45.28, "end": 45.84, "value": "X" }, { "start": 45.84, "end": 45.90, "value": "B" }, { "start": 45.90, "end": 45.96, "value": "C" }, { "start": 45.96, "end": 46.10, "value": "B" }, { "start": 46.10, "end": 46.17, "value": "G" }, { "start": 46.17, "end": 46.59, "value": "B" }, { "start": 46.59, "end": 47.02, "value": "X" }, { "start": 47.02, "end": 47.16, "value": "B" }, { "start": 47.16, "end": 47.23, "value": "F" }, { "start": 47.23, "end": 47.44, "value": "B" }, { "start": 47.44, "end": 47.58, "value": "F" }, { "start": 47.58, "end": 47.79, "value": "C" }, { "start": 47.79, "end": 48.00, "value": "B" }, { "start": 48.00, "end": 48.21, "value": "F" }, { "start": 48.21, "end": 48.35, "value": "B" }, { "start": 48.35, "end": 48.56, "value": "F" }, { "start": 48.56, "end": 48.91, "value": "B" }, { "start": 48.91, "end": 49.05, "value": "C" }, { "start": 49.05, "end": 49.13, "value": "A" }, { "start": 49.13, "end": 49.19, "value": "C" }, { "start": 49.19, "end": 49.31, "value": "B" }, { "start": 49.31, "end": 49.45, "value": "C" }, { "start": 49.45, "end": 49.49, "value": "X" }
+    ];
+
+    // 3. LOAD THE 3D MODEL
+    const loader = new GLTFLoader();
+    loader.load('AI_Mascot.glb', (gltf) => {
+        const model = gltf.scene;
+        model.scale.set(0.8, 0.8, 0.8); 
+        model.position.y = 0.7; 
+        scene.add(model);
+
+        // --- FIND THE BONES AND MESH ---
+        model.traverse((child) => {
+            if (child.isMesh && child.morphTargetDictionary) {
+                if(child.name.includes("Head") || child.name.includes("Avatar")) {
+                    headMesh = child; 
+                }
+            }
+            if (child.isBone) {
+                const boneName = child.name.toLowerCase();
+                if (boneName.includes('head')) {
+                    headBone = child;
+                } else if (boneName.includes('neck')) {
+                    neckBone = child;
+                }
+            }
+        });
+
+        if (gltf.animations.length > 0) {
+            mixer = new THREE.AnimationMixer(model);
+            const idleAction = mixer.clipAction(gltf.animations[0]);
+            idleAction.play();
+        }
+    });
+
+    // 4. THE SYNC LOOP
+    let currentVisemeId = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+
+        // Update the orbit controls
+        controls.update();
+
+        // 1. Update the breathing animation
+        if (mixer) mixer.update(delta);
+
+        // 2. Head tracking logic (Fixed inverted math!)
+        if (headBone) {
+            mouseX = THREE.MathUtils.lerp(mouseX, targetMouseX, 0.05);
+            mouseY = THREE.MathUtils.lerp(mouseY, targetMouseY, 0.05);
+
+            // Flipped the (-) signs here so he looks the correct direction
+            headBone.rotation.y = mouseX * 0.5; 
+            headBone.rotation.x = -mouseY * 0.4;  
+            
+            if (neckBone) {
+                neckBone.rotation.y = mouseX * 0.3; 
+                neckBone.rotation.x = -mouseY * 0.2;  
+            }
+        }
+
+        // 3. Lip sync logic
+        if (headMesh && !audio.paused) {
+            const currentTime = audio.currentTime;
+            const currentCue = mouthCues.find(cue => currentTime >= cue.start && currentTime <= cue.end);
+
+            currentVisemeId = currentCue ? rhubarbToVisemeId[currentCue.value] : 0;
+            const targetVisemeName = visemeMap[currentVisemeId];
+
+            for (const [name, index] of Object.entries(headMesh.morphTargetDictionary)) {
+                const targetWeight = (name === targetVisemeName) ? 1.0 : 0.0;
+                headMesh.morphTargetInfluences[index] = THREE.MathUtils.lerp(
+                    headMesh.morphTargetInfluences[index],
+                    targetWeight,
+                    0.4 
+                );
+            }
+        } else if (headMesh && audio.paused) {
+            for (let i = 0; i < headMesh.morphTargetInfluences.length; i++) {
+                headMesh.morphTargetInfluences[i] = THREE.MathUtils.lerp(headMesh.morphTargetInfluences[i], 0, 0.2);
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    // 5. BUTTON LISTENER
+    document.getElementById('playBtn').addEventListener('click', () => {
+        audio.currentTime = 0;
+        audio.play();
+    });
+
+    // 6. WINDOW RESIZE FIX
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+</script>
+</body>
+</html>
