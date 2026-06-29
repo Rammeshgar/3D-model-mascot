@@ -2,8 +2,7 @@
 
 A web-based, interactive 3D mascot designed to act as a frontend interface for AI conversational agents. This project features a fully rigged 3D character with idle breathing animations, custom branded clothing, and real-time audio-to-mouth synchronization (visemes).
 
-![3D Mascot Screenshot](<img width="1916" height="988" alt="Screenshot 2026-06-29 155155" src="https://github.com/user-attachments/assets/63b2f250-c97e-41bf-b133-f599e3dc8a29" />) 
-
+<img width="100%" alt="3D Mascot Screenshot" src="https://github.com/user-attachments/assets/63b2f250-c97e-41bf-b133-f599e3dc8a29" />
 
 ## ✨ Features
 * **Real-Time Lip Sync:** Uses facial morph targets (Shape Keys) mapped to audio timestamps to simulate natural talking.
